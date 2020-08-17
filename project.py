@@ -2,14 +2,11 @@
 import socket
 from PIL import Image
 from threading import Thread
-from pynput.mouse import Controller;
 
 old_x = -1;
 old_y = -1;
 new_x = -1;
 new_y = -1;
-
-mouse = Controller();
 
 canTrack = True;
 
@@ -21,57 +18,40 @@ class CreateServer :
 		global canTrack;
 		try :
 			serverSock = socket.socket()
-			serverSock.bind(("192.168.43.138",self.port))
+			serverSock.bind(("192.168.0.101",self.port))
 			serverSock.listen(5)
 			print("on listen")
 			sock,addr = serverSock.accept()
 			print("got Connect")
 			i = 1
 			while 1:
-				self.count = 0
-				self.data = sock.recv(1)
-				if(self.data == b'\xff') :
-					file = "tmp.jpg"
+				data = sock.recv(1)
+				if(data == b'\xff') :
+					file = "tmp_" + str(i) + ".jpg"
 					im = open(file,"wb")
-					while (self.data != b'') :
-						if(self.data == b'\xff') :
-							self.data += sock.recv(1)
-							if(self.data == b'\xff\xd8') :
-								if(self.count !=0 and self.count != 1 ) :
-									self.data = "";
-									self.data = sock.recv(1);
-									continue;
-								else :
-									self.count += 1
-								# print("self.data : ", self.data , "  count : ",self.count)
-							elif(self.data == b'\xff\xd9') :
-								if(self.count != 2 and self.count != 3) :
-									self.data = "";
-									self.data = sock.recv(1);
-									continue;
-								else :
-									self.count += 1
-								# print("self.data : ", self.data , "  count : ",self.count)
-								if(self.count == 4) :
-									# print("image close")
-									im.write(self.data)
-									self.data="";
+					count = 0
+					while (data != b'') :
+						if(data == b'\xff') :
+							data += sock.recv(1)
+							if(data == b'\xff\xd8') :
+								count += 1
+								print("data : ", data , "  count : ",count)
+							elif(data == b'\xff\xd9') :
+								count -= 1
+								print("data : ", data , "  count : ",count)
+								if(not count) :
+									print("image close")
+									im.write(data)
 									im.close();
 									if(canTrack) :
 										canTrack = False;
-										try :
-											img = Image.open(file,"r");
-											track = object_track(img.convert("HSV"),img.width,img.height);
-											track.start();
-											img.close();
-										except Exception as e :
-											print("Error : ",e);
-											canTrack = True;
+										im = open(file,"rb");
+										track = object_track(im);
+										track.start();
 									break
-						im.write(self.data)
-						self.data="";
-						self.data = sock.recv(1)
-						if(self.data==b'') :
+						im.write(data)
+						data = sock.recv(1)
+						if(data == b'') :
 							break
 					i += 1
 		except Exception as e:
@@ -80,12 +60,14 @@ class CreateServer :
 
 
 class object_track(Thread) :
-	def __init__(self,data,width,height) :
+	def __init__(self,file) :
 		Thread.__init__(self);
-		im_hsv = data;
+		self.file = file;
+		self.im = Image.open(file,"r");
+		im_hsv = self.im.convert("HSV");
 		self.hsv_data = list(im_hsv.getdata());
-		self.x_size = width;
-		self.y_size = height;
+		self.x_size = self.im.width;
+		self.y_size = self.im.height;
 		self.x_cor=0;
 		self.y_cor=0;
 		self.x = -1;
@@ -134,20 +116,6 @@ class object_track(Thread) :
 
 		new_x = int((self.x_start + self.x_end) / 2);
 		new_y = int((self.y_start + self.y_end) / 2);
-
-		if(new_x != -1 and new_y != -1) :
-			if(old_x != -1 and old_y != -1) :
-				diff_x = (new_x - old_x)*11;
-				diff_y = (new_y - old_y)*19;
-				print("diff_x = " + str(diff_x) + "  diff_y = " + str(diff_y));				
-				mouse.move(diff_y, diff_x);
-			else :
-				old_x = new_x;
-				old_y = new_y;
-				
-		else :
-			old_x = -1;
-			old_y = -1;
 
 		print("new_x = " + str(new_x) + "  new_y = " + str(new_y));
 		canTrack = True;
